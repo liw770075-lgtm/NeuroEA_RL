@@ -1,4 +1,4 @@
-"""Test action-history static SAC checkpoints and save convergence CSV files."""
+"""Test paper-state static SAC checkpoints and save convergence CSV files."""
 
 from __future__ import annotations
 
@@ -17,7 +17,9 @@ if __package__ is None or __package__ == "":
 import numpy as np
 import torch
 
-from RL.Static.action_history_env import ActionHistoryStaticConfigEnv
+from RL.shared.static_config_flow.sequential_env import (
+    SequentialStaticStepNeuroEAConfigEnv,
+)
 from RL.shared.env.problem_utils import ProblemTask
 from RL.shared.env.stepwise_ea_env import _extract_best_value
 from RL.shared.method.observation import flatten_observation, infer_observation_dim
@@ -41,8 +43,8 @@ def parse_args():
     parser.add_argument("--device", default="cpu")
     parser.add_argument("--dtype", default="float64")
     parser.add_argument("--output", default=None)
-    parser.add_argument("--output-dir", default="result/Static_ActionHistory")
-    parser.add_argument("--output-prefix", default="StaticActionHistory")
+    parser.add_argument("--output-dir", default="result/Static_PaperState")
+    parser.add_argument("--output-prefix", default="StaticPaperState")
     parser.add_argument("--summary-output", default=None)
     return parser.parse_args()
 
@@ -91,8 +93,13 @@ def load_config(checkpoint_path):
         raise FileNotFoundError(f"Missing run_config.json: {path}")
     with path.open("r", encoding="utf-8") as handle:
         config = json.load(handle)
-    if config.get("state_design") != "ela_action_history_selected_mask_v1":
-        raise ValueError("Checkpoint was not trained with the RL/Static action-history state.")
+    expected_state_design = "ela_parameter_index_one_hot_v1"
+    if config.get("state_design") != expected_state_design:
+        raise ValueError(
+            "Checkpoint was not trained with the paper state s_i=[e0,h_i]. "
+            f"Expected {expected_state_design!r}, "
+            f"got {config.get('state_design')!r}."
+        )
     return config
 
 
@@ -134,18 +141,29 @@ def test_problem(args, problem_name, checkpoint_path, output_path, device):
     config = load_config(checkpoint_path)
     train_args = config.get("args", {})
     task = ProblemTask(problem_name, (args.population_size, 2, args.dimension, args.max_fe))
-    env = ActionHistoryStaticConfigEnv(
+    if bool(train_args.get("include_task_context", False)):
+        raise ValueError(
+            "The checkpoint includes task context and therefore does not use "
+            "the strict paper state s_i=[e0,h_i]."
+        )
+    env = SequentialStaticStepNeuroEAConfigEnv(
         tasks=[task],
         initialization="example",
         seed=args.seed,
         device=args.device,
         dtype=args.dtype,
-        include_task_context=bool(train_args.get("include_task_context", False)),
+        include_task_context=False,
         ela_feature_scale=float(train_args.get("ela_feature_scale", 100.0)),
         ela_objective_index=int(train_args.get("ela_objective_index", 0)),
     )
     observation, _ = env.reset(seed=args.seed, options={"task_index": 0})
     observation_dim = infer_observation_dim(observation)
+    expected_observation_dim = 9 + env.num_params
+    if observation_dim != expected_observation_dim:
+        raise RuntimeError(
+            "Unexpected paper-state dimension: "
+            f"expected={expected_observation_dim}, actual={observation_dim}."
+        )
     action_dim = int(np.prod(env.action_space.shape))
     checkpoint = torch.load(checkpoint_path, map_location=device)
     state = checkpoint.get("agent", checkpoint)

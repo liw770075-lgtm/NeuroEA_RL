@@ -15,7 +15,9 @@ if __package__ is None or __package__ == "":
 import numpy as np
 import torch
 
-from RL.Static.action_history_env import ActionHistoryStaticConfigEnv
+from RL.shared.static_config_flow.sequential_env import (
+    SequentialStaticStepNeuroEAConfigEnv,
+)
 from RL.shared.TD3.static.td3_agent import TD3Agent
 from RL.shared.env.problem_utils import ProblemTask
 from RL.shared.method.observation import flatten_observation, infer_observation_dim
@@ -84,9 +86,14 @@ def train(args, tasks, log_dir, seed, algorithm="sac"):
     algorithm = str(algorithm).lower()
     if algorithm not in {"sac", "td3"}:
         raise ValueError("algorithm must be 'sac' or 'td3'.")
+    if args.include_task_context:
+        raise ValueError(
+            "--include-task-context is incompatible with the paper state "
+            "s_i=[e0,h_i]."
+        )
     np.random.seed(seed)
     torch.manual_seed(seed)
-    env = ActionHistoryStaticConfigEnv(
+    env = SequentialStaticStepNeuroEAConfigEnv(
         tasks=tasks,
         task_mode=args.task_mode,
         initialization="example",
@@ -100,6 +107,12 @@ def train(args, tasks, log_dir, seed, algorithm="sac"):
     )
     initial_observation, _ = env.reset(seed=seed, options={"task_index": 0})
     observation_dim = infer_observation_dim(initial_observation)
+    expected_observation_dim = 9 + env.num_params
+    if observation_dim != expected_observation_dim:
+        raise RuntimeError(
+            "Unexpected paper-state dimension: "
+            f"expected={expected_observation_dim}, actual={observation_dim}."
+        )
     action_dim = int(np.prod(env.action_space.shape))
     device = "cuda" if args.device == "auto" and torch.cuda.is_available() else args.device
     if device == "auto":
@@ -172,7 +185,7 @@ def train(args, tasks, log_dir, seed, algorithm="sac"):
         log_dir / "run_config.json",
         {
             "algorithm": algorithm.upper(),
-            "state_design": "ela_action_history_selected_mask_v1",
+            "state_design": "ela_parameter_index_one_hot_v1",
             "args": vars(args),
             "seed": seed,
             "problem_names": [task.problem_name for task in tasks],
@@ -183,8 +196,8 @@ def train(args, tasks, log_dir, seed, algorithm="sac"):
     rewards = np.asarray([item.total_reward for item in results], dtype=np.float64)
     summary = {
         "algorithm": algorithm.upper(),
-        "flow": "static_sequential_action_history",
-        "state_design": "ela + action_history + selected_mask + optional_task_context",
+        "flow": "static_sequential_parameter_index",
+        "state_design": "ela + parameter_index_one_hot",
         "episodes": len(results),
         "observation_dim": observation_dim,
         "action_dim": action_dim,
