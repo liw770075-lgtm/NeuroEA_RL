@@ -1,0 +1,10 @@
+# NeuroEA-RL runtime dependencies
+# Recommended Python version: 3.11
+
+numpy>=1.26,<3.0
+torch>=2.4,<3.0
+scipy>=1.11,<2.0
+scikit-learn>=1.3,<2.0
+gymnasium>=0.28,<2.0
+matplotlib>=3.8,<4.0
+tqdm>=4.66,<5.0
