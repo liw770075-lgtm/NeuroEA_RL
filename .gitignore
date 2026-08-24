@@ -1,7 +1,7 @@
 # Local Python environments
-.venv/
-venv/
-env/
+/.venv/
+/venv/
+/env/
 
 # Python caches and tooling
 __pycache__/
@@ -19,3 +19,12 @@ Thumbs.db
 
 # Local archives
 *.zip
+
+
+# Generated training outputs and model checkpoints
+RL/**/runs/
+runs/
+*.pt
+*.pth
+*.ckpt
+
