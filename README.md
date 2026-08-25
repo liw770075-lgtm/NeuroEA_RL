@@ -37,21 +37,21 @@ After all parameters have been selected, NeuroEA runs to completion with the fix
 
 ### ELA feature extraction
 
-The ELA vector uses the following fixed order from Table 4 of [DesignX](https://openreview.net/pdf?id=FAiIRMvIwy). The values are calculated by the standard [pflacco](https://pflacco.readthedocs.io/en/stable/pflacco.classical_ela_features.html) implementation pinned to version `1.2.2`.
+The ELA vector uses the actual output order of the public [DesignX](https://github.com/MetaEvo/DesignX) `env/ela_feature.py` pipeline. This code-level order differs from the order of the declared selection list in DesignX. The values are calculated by the standard [pflacco](https://pflacco.readthedocs.io/en/stable/pflacco.classical_ela_features.html) implementation pinned to version `1.2.2`.
 
 | Index | Feature name | Interpretation |
 | ---: | --- | --- |
 | 0 | `ela_meta.lin_simple.intercept` | Intercept of the simple linear meta-model |
-| 1 | `ela_meta.quad_simple.adj_r2` | Adjusted R-squared of the quadratic model without interactions |
-| 2 | `ela_meta.lin_w_interact.adj_r2` | Adjusted R-squared of the linear model with pairwise interactions |
-| 3 | `ic.m0` | Initial partial information |
-| 4 | `ic.h_max` | Maximum information content |
-| 5 | `ic.eps_ratio` | Half partial-information sensitivity |
-| 6 | `nbc.nn_nb.mean_ratio` | Mean nearest-neighbor to nearest-better-neighbor distance ratio |
-| 7 | `nbc.dist_ratio.coeff_var` | Coefficient of variation of nearest-better distance ratios |
-| 8 | `ela_distr.number_of_peaks` | Estimated number of peaks in the objective-value density |
+| 1 | `ela_meta.lin_w_interact.adj_r2` | Adjusted R-squared of the linear model with pairwise interactions |
+| 2 | `ela_meta.quad_simple.adj_r2` | Adjusted R-squared of the quadratic model without interactions |
+| 3 | `ic.h_max` | Maximum information content |
+| 4 | `ic.eps_ratio` | Half partial-information sensitivity |
+| 5 | `ic.m0` | Initial partial information |
+| 6 | `ela_distr.number_of_peaks` | Estimated number of peaks in the objective-value density |
+| 7 | `nbc.nn_nb.mean_ratio` | Mean nearest-neighbor to nearest-better-neighbor distance ratio |
+| 8 | `nbc.dist_ratio.coeff_var` | Coefficient of variation of nearest-better distance ratios |
 
-Before extraction, objective values are min-max normalized to `[0, 1]`. Information-content and tie-breaking randomness use the fixed default seed `42`. Undefined scalar results follow the public DesignX sanitization rule: `NaN -> 0` and `Inf -> 1`. Finite negative values are retained because they are valid outputs for features such as adjusted R-squared. The default post-extraction divisor is `1.0`, so no second scaling is applied.
+Before extraction, objective values are min-max normalized using the DesignX denominator `max(Y) - min(Y) + 1e-15`. Information-content and tie-breaking randomness use the fixed default seed `42`. Undefined scalar results follow the public DesignX sanitization rule: `NaN -> 0` and `Inf -> 1`. Finite negative values are retained because they are valid outputs for features such as adjusted R-squared. When all objective values are equal, the DesignX constant-landscape branch sets `ela_distr.number_of_peaks` to `1` and continues extracting the remaining features. The default post-extraction divisor is `1.0`, so no second scaling is applied.
 
 The sampling protocols are deliberately explicit:
 
@@ -69,7 +69,7 @@ python .\RL\shared\ELA\ELA.py `
   --seed 42
 ```
 
-ELA extraction is fail-fast. Missing dependencies, invalid samples, constant objective values, or calculation errors stop the run with an explicit exception; the environment never silently replaces a failed ELA vector with zeros.
+ELA extraction remains fail-fast for missing dependencies, invalid shapes, non-finite samples, insufficient samples, and calculation errors. A constant objective vector is treated as the explicit DesignX convergence case rather than as an extraction failure; the environment never silently replaces a failed ELA vector with an all-zero vector.
 
 ## Repository Structure
 

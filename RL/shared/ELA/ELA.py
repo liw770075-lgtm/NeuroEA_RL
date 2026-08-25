@@ -1,8 +1,8 @@
-"""Paper-aligned exploratory landscape analysis (ELA) features.
+"""DesignX-compatible exploratory landscape analysis (ELA) features.
 
-The feature names and order follow Table 4 of DesignX and are computed with
-the standard implementations provided by pflacco. Objective values are
-min-max normalized before extraction, matching the public DesignX pipeline.
+The feature definitions, preprocessing, and vector order follow the actual
+public ``DesignX/env/ela_feature.py`` extraction pipeline. The selected
+features are computed with the standard implementations provided by pflacco.
 """
 
 from __future__ import annotations
@@ -26,18 +26,20 @@ from pflacco.classical_ela_features import (
 
 ELA_FEATURE_NAMES = (
     "ela_meta.lin_simple.intercept",
-    "ela_meta.quad_simple.adj_r2",
     "ela_meta.lin_w_interact.adj_r2",
-    "ic.m0",
+    "ela_meta.quad_simple.adj_r2",
     "ic.h_max",
     "ic.eps_ratio",
+    "ic.m0",
+    "ela_distr.number_of_peaks",
     "nbc.nn_nb.mean_ratio",
     "nbc.dist_ratio.coeff_var",
-    "ela_distr.number_of_peaks",
 )
 ELA_FEATURE_DIM = len(ELA_FEATURE_NAMES)
 DEFAULT_ELA_SEED = 42
-ELA_IMPLEMENTATION_VERSION = "designx_table4_pflacco_1.2.2_v1"
+ELA_IMPLEMENTATION_VERSION = "designx_code_order_pflacco_1.2.2_v2"
+DESIGNX_NORMALIZATION_EPS = 1e-15
+DESIGNX_CONSTANT_RANGE_THRESHOLD = 1e-8
 
 
 def _validate_samples(X, Y):
@@ -70,9 +72,7 @@ def _validate_samples(X, Y):
     if not np.all(np.isfinite(x)) or not np.all(np.isfinite(y)):
         raise ValueError("X and Y must contain only finite values.")
     y_span = float(np.ptp(y))
-    if y_span <= np.finfo(np.float64).eps:
-        raise ValueError("ELA features are undefined when all objective values are equal.")
-    return x, (y - float(np.min(y))) / y_span
+    return x, (y - float(np.min(y))) / (y_span + DESIGNX_NORMALIZATION_EPS)
 
 
 def _sanitize_feature(value):
@@ -94,11 +94,27 @@ def compute_ela_feature_dict(X, Y, seed=DEFAULT_ELA_SEED):
     if seed is not None:
         np.random.seed(int(seed))
     try:
+        # DesignX suppresses RuntimeWarning in its bundled pflacco module. Keep
+        # the suppression local so unrelated numerical warnings remain visible.
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", RuntimeWarning)
+            meta_features = calculate_ela_meta(x, y)
+            ic_features = calculate_information_content(x, y, seed=seed)
+            if float(np.ptp(y)) < DESIGNX_CONSTANT_RANGE_THRESHOLD:
+                distribution_features = {"ela_distr.number_of_peaks": 1.0}
+            else:
+                distribution_features = calculate_ela_distribution(x, y)
+            nbc_features = calculate_nbc(
+                x,
+                y,
+                dist_tie_breaker="sample",
+                minimize=True,
+            )
         feature_sets = (
-            calculate_ela_meta(x, y),
-            calculate_information_content(x, y, seed=seed),
-            calculate_nbc(x, y, dist_tie_breaker="sample", minimize=True),
-            calculate_ela_distribution(x, y),
+            meta_features,
+            ic_features,
+            distribution_features,
+            nbc_features,
         )
     except Exception as exc:
         raise RuntimeError(
@@ -117,7 +133,7 @@ def compute_ela_feature_dict(X, Y, seed=DEFAULT_ELA_SEED):
 
 
 def compute_ela_features(X, Y, seed=DEFAULT_ELA_SEED):
-    """Return the paper-aligned ELA vector in ELA_FEATURE_NAMES order."""
+    """Return the DesignX-compatible ELA vector in ELA_FEATURE_NAMES order."""
 
     return np.asarray(
         list(compute_ela_feature_dict(X, Y, seed=seed).values()),
@@ -131,7 +147,7 @@ def get_ela_from_neuroea(
     ela_sample=100,
     seed=DEFAULT_ELA_SEED,
 ):
-    """Sample a torch NeuroEA problem and return its paper-aligned ELA vector."""
+    """Sample a torch NeuroEA problem and return its DesignX-compatible ELA vector."""
 
     project_root = Path(__file__).resolve().parents[3]
     if str(project_root) not in sys.path:
