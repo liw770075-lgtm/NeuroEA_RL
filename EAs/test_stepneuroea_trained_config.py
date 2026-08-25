@@ -60,7 +60,7 @@ def parse_args():
 def make_env(args):
     task = ProblemTask(
         args.problem_name,
-        (args.population_size, 2, args.dimension, args.max_fe),
+        (args.population_size, 1, args.dimension, args.max_fe),
     )
     return StepNeuroEAEnv(
         tasks=[task],

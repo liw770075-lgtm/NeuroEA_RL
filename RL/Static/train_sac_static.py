@@ -1,4 +1,4 @@
-"""Train sequential static SAC with previous actions included in the state."""
+"""Train sequential static SAC with the paper state s_i = [e_0, h_i]."""
 
 from __future__ import annotations
 
@@ -15,6 +15,7 @@ if __package__ is None or __package__ == "":
 import numpy as np
 import torch
 
+from RL.shared.ELA.ELA import ELA_FEATURE_NAMES, ELA_IMPLEMENTATION_VERSION
 from RL.shared.static_config_flow.sequential_env import (
     SequentialStaticStepNeuroEAConfigEnv,
 )
@@ -40,7 +41,12 @@ def parse_names(text):
 
 
 def add_arguments(parser, output_argument="log-dir"):
-    parser.add_argument("--episodes", type=int, default=10000)
+    parser.add_argument(
+        "--episodes",
+        type=int,
+        default=5000,
+        help="Training episodes (paper default: 5000).",
+    )
     parser.add_argument("--problem-names", default="SOP_F1")
     parser.add_argument("--dimension", type=int, default=10)
     parser.add_argument("--population-size", type=int, default=100)
@@ -55,7 +61,7 @@ def add_arguments(parser, output_argument="log-dir"):
     parser.add_argument("--batch-size", type=int, default=960)
     parser.add_argument("--start-steps", type=int, default=128)
     parser.add_argument("--updates-per-step", type=int, default=1)
-    parser.add_argument("--ela-feature-scale", type=float, default=100.0)
+    parser.add_argument("--ela-feature-scale", type=float, default=1.0)
     parser.add_argument("--ela-objective-index", type=int, default=0)
     parser.add_argument("--reward-clip", type=float, default=None)
     parser.add_argument("--actor-output-clip", type=float, default=5.0)
@@ -67,12 +73,12 @@ def add_arguments(parser, output_argument="log-dir"):
     if output_argument == "log-dir":
         parser.add_argument(
             "--log-dir",
-            default="RL/runs/Static/action_history_sac_sop_f1",
+            default="RL/runs/Static/paper_state_sac_sop_f1",
         )
     else:
         parser.add_argument(
             "--output-root",
-            default="RL/runs/Static/action_history_sac_sop_f1_f10",
+            default="RL/runs/Static/paper_state_sac_sop_f1_f10",
         )
         parser.add_argument("--seed-stride", type=int, default=1000)
     return parser
@@ -186,6 +192,8 @@ def train(args, tasks, log_dir, seed, algorithm="sac"):
         {
             "algorithm": algorithm.upper(),
             "state_design": "ela_parameter_index_one_hot_v1",
+            "ela_implementation": ELA_IMPLEMENTATION_VERSION,
+            "ela_feature_names": list(ELA_FEATURE_NAMES),
             "args": vars(args),
             "seed": seed,
             "problem_names": [task.problem_name for task in tasks],
@@ -198,6 +206,7 @@ def train(args, tasks, log_dir, seed, algorithm="sac"):
         "algorithm": algorithm.upper(),
         "flow": "static_sequential_parameter_index",
         "state_design": "ela + parameter_index_one_hot",
+        "ela_implementation": ELA_IMPLEMENTATION_VERSION,
         "episodes": len(results),
         "observation_dim": observation_dim,
         "action_dim": action_dim,
@@ -219,7 +228,7 @@ def train(args, tasks, log_dir, seed, algorithm="sac"):
 def main():
     args = parse_args()
     tasks = [
-        ProblemTask(name, (args.population_size, 2, args.dimension, args.max_fe))
+        ProblemTask(name, (args.population_size, 1, args.dimension, args.max_fe))
         for name in parse_names(args.problem_names)
     ]
     summary = train(args, tasks, args.log_dir, args.seed)

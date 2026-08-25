@@ -35,7 +35,7 @@ class ActionHistoryStaticConfigEnv(EnvBase):
         dtype=None,
         seed=0,
         include_task_context=False,
-        ela_feature_scale=100.0,
+        ela_feature_scale=1.0,
         ela_objective_index=0,
         reward_clip=None,
     ):
@@ -201,9 +201,8 @@ class ActionHistoryStaticConfigEnv(EnvBase):
     def _compute_static_ela(self, state):
         population_dec = _to_numpy(state.get("population_dec"), dtype=np.float64)
         population_obj = _to_numpy(state.get("population_obj"), dtype=np.float64)
-        fallback = np.zeros(9, dtype=np.float32)
         if population_dec is None or population_obj is None:
-            return fallback
+            raise ValueError("Static ELA extraction requires population_dec and population_obj.")
         x = np.asarray(population_dec, dtype=np.float64)
         y = np.asarray(population_obj, dtype=np.float64)
         if y.ndim == 2 and y.shape[0] == x.shape[0]:
@@ -211,16 +210,15 @@ class ActionHistoryStaticConfigEnv(EnvBase):
             y = y[:, index]
         y = y.reshape(-1)
         if x.ndim != 2 or y.shape[0] != x.shape[0]:
-            return fallback
-        try:
-            from RL.shared.ELA.ELA import compute_ela_features
+            raise ValueError(f"Invalid static ELA population shapes: X={x.shape}, Y={y.shape}.")
 
-            features = np.asarray(compute_ela_features(x, y), dtype=np.float32).reshape(-1)
-        except Exception:
-            return fallback
-        if features.size < 9:
-            features = np.pad(features, (0, 9 - features.size))
-        features = np.nan_to_num(features[:9], nan=0.0, posinf=0.0, neginf=0.0)
+        from RL.shared.ELA.ELA import ELA_FEATURE_DIM, compute_ela_features
+
+        features = np.asarray(compute_ela_features(x, y), dtype=np.float32).reshape(-1)
+        if features.shape != (ELA_FEATURE_DIM,):
+            raise ValueError(
+                f"Expected {ELA_FEATURE_DIM} ELA features, received {features.shape[0]}."
+            )
         if self.ela_feature_scale is not None and self.ela_feature_scale > 0:
             features = features / self.ela_feature_scale
         return features.astype(np.float32, copy=False)

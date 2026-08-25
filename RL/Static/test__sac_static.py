@@ -17,6 +17,8 @@ if __package__ is None or __package__ == "":
 import numpy as np
 import torch
 
+from RL.shared.ELA.ELA import ELA_IMPLEMENTATION_VERSION
+
 from RL.shared.static_config_flow.sequential_env import (
     SequentialStaticStepNeuroEAConfigEnv,
 )
@@ -100,6 +102,12 @@ def load_config(checkpoint_path):
             f"Expected {expected_state_design!r}, "
             f"got {config.get('state_design')!r}."
         )
+    if config.get("ela_implementation") != ELA_IMPLEMENTATION_VERSION:
+        raise ValueError(
+            "Checkpoint uses an incompatible ELA implementation. "
+            f"Expected {ELA_IMPLEMENTATION_VERSION!r}, "
+            f"got {config.get('ela_implementation')!r}; retrain the model."
+        )
     return config
 
 
@@ -140,7 +148,7 @@ def test_problem(args, problem_name, checkpoint_path, output_path, device):
         raise FileNotFoundError(f"Checkpoint does not exist: {checkpoint_path.resolve()}")
     config = load_config(checkpoint_path)
     train_args = config.get("args", {})
-    task = ProblemTask(problem_name, (args.population_size, 2, args.dimension, args.max_fe))
+    task = ProblemTask(problem_name, (args.population_size, 1, args.dimension, args.max_fe))
     if bool(train_args.get("include_task_context", False)):
         raise ValueError(
             "The checkpoint includes task context and therefore does not use "
@@ -153,7 +161,7 @@ def test_problem(args, problem_name, checkpoint_path, output_path, device):
         device=args.device,
         dtype=args.dtype,
         include_task_context=False,
-        ela_feature_scale=float(train_args.get("ela_feature_scale", 100.0)),
+        ela_feature_scale=float(train_args.get("ela_feature_scale", 1.0)),
         ela_objective_index=int(train_args.get("ela_objective_index", 0)),
     )
     observation, _ = env.reset(seed=args.seed, options={"task_index": 0})

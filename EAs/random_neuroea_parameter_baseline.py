@@ -120,7 +120,7 @@ def record_parameters(rows, run, generation, action, parameters):
 def run_problem(args, problem_name, output, parameters_output):
     task = ProblemTask(
         problem_name,
-        (args.population_size, 2, args.dimension, args.max_fe),
+        (args.population_size, 1, args.dimension, args.max_fe),
     )
     env = StepNeuroEAEnv(
         tasks=[task],

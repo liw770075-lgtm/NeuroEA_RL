@@ -166,7 +166,7 @@ def parse_args():
     parser.add_argument("--batch-size", type=int, default=960, help="SAC batch size.")
     parser.add_argument("--start-steps", type=int, default=128, help="Random exploration episodes before policy actions.")
     parser.add_argument("--updates-per-step", type=int, default=1, help="Gradient updates per stored transition.")
-    parser.add_argument("--ela-feature-scale", type=float, default=100.0, help="Divide ELA features by this scale.")
+    parser.add_argument("--ela-feature-scale", type=float, default=1.0, help="Optional post-extraction ELA divisor.")
     parser.add_argument("--ela-objective-index", type=int, default=0, help="Objective column used for ELA.")
     parser.add_argument("--reward-clip", type=float, default=None, help="Optional clip for environment reward.")
     parser.add_argument(
@@ -213,7 +213,7 @@ def main():
     torch.manual_seed(args.seed)
 
     tasks = [
-        ProblemTask(problem_name, (args.population_size, 2, args.dimension, args.max_fe))
+        ProblemTask(problem_name, (args.population_size, 1, args.dimension, args.max_fe))
         for problem_name in parse_csv_strings(args.problem_names)
     ]
 

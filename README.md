@@ -3,7 +3,7 @@
 NeuroEA-RL is a research project for learning the parameter configuration of NeuroEA with reinforcement learning. It provides a PyTorch implementation of NeuroEA and supports Soft Actor-Critic (SAC) and Twin Delayed Deep Deterministic Policy Gradient (TD3) agents for learning configuration policies:
 
 - **Dynamic configuration:** SAC produces a complete parameter vector for every NeuroEA generation.
-- **Static configuration:** SAC selects the parameters sequentially, after which NeuroEA runs to completion with the resulting fixed configuration.
+- **Static configuration:** SAC or TD3 selects the parameters sequentially, after which NeuroEA runs to completion with the resulting fixed configuration.
 
 The current implementation focuses on single-objective optimization and includes `SOP_F1`–`SOP_F10` and `BBOB_F1`–`BBOB_F10` benchmark problems.
 
@@ -12,8 +12,8 @@ The current implementation focuses on single-objective optimization and includes
 | Configuration | Agent | Entry point | Agent action | Observation | When parameters are applied |
 | --- | --- | --- | --- | --- | --- |
 | Dynamic | SAC | `RL/Dynamic/train_sac_dynamic.py` | A complete normalized parameter vector at every step | Search summary, current control parameters, ELA features, and optional task context | Before every NeuroEA generation |
-| Static | SAC | `RL/Static/train_sac_static.py` | One normalized parameter at every step | ELA features, previously selected parameters, a selection mask, and optional task context | After all parameters have been selected |
-| Static | TD3 | `RL/Static/train_td3_static.py` | One normalized parameter at every step | The same action-history observation used by static SAC | After all parameters have been selected |
+| Static | SAC | `RL/Static/train_sac_static.py` | One normalized parameter at every step | Initial ELA vector `e_0` and current parameter-index one-hot vector `h_i` (39 dimensions) | After all parameters have been selected |
+| Static | TD3 | `RL/Static/train_td3_static.py` | One normalized parameter at every step | The same paper-state observation, `s_i = [e_0, h_i]`, used by static SAC | After all parameters have been selected |
 
 Actions in both environments are normalized to `[-1, 1]`. The environment maps them back to the actual lower and upper bounds of each NeuroEA parameter.
 
@@ -31,9 +31,45 @@ The observation uses normalized search-summary and ELA features to reduce scale 
 
 ### Static configuration
 
-The static environment divides one complete configuration into a sequence of reinforcement-learning steps. SAC or TD3 selects one scalar parameter at each step, while the observation records the previous choices and the selected-parameter mask.
+The static environment divides one complete configuration into a sequence of reinforcement-learning steps. SAC or TD3 selects one scalar parameter at each step. The observation follows the paper definition `s_i = [e_0, h_i]`: the 9-dimensional initial ELA vector remains fixed throughout the episode, while the 30-dimensional one-hot vector identifies the parameter currently being selected.
 
 After all parameters have been selected, NeuroEA runs to completion with the fixed parameter vector. The final reward is the logarithmic improvement from the initial best-fitness gap to the final best-fitness gap. This reward is then assigned back to the parameter-selection transitions. Optional reward shaping relative to the default configuration is also supported.
+
+### ELA feature extraction
+
+The ELA vector uses the following fixed order from Table 4 of [DesignX](https://openreview.net/pdf?id=FAiIRMvIwy). The values are calculated by the standard [pflacco](https://pflacco.readthedocs.io/en/stable/pflacco.classical_ela_features.html) implementation pinned to version `1.2.2`.
+
+| Index | Feature name | Interpretation |
+| ---: | --- | --- |
+| 0 | `ela_meta.lin_simple.intercept` | Intercept of the simple linear meta-model |
+| 1 | `ela_meta.quad_simple.adj_r2` | Adjusted R-squared of the quadratic model without interactions |
+| 2 | `ela_meta.lin_w_interact.adj_r2` | Adjusted R-squared of the linear model with pairwise interactions |
+| 3 | `ic.m0` | Initial partial information |
+| 4 | `ic.h_max` | Maximum information content |
+| 5 | `ic.eps_ratio` | Half partial-information sensitivity |
+| 6 | `nbc.nn_nb.mean_ratio` | Mean nearest-neighbor to nearest-better-neighbor distance ratio |
+| 7 | `nbc.dist_ratio.coeff_var` | Coefficient of variation of nearest-better distance ratios |
+| 8 | `ela_distr.number_of_peaks` | Estimated number of peaks in the objective-value density |
+
+Before extraction, objective values are min-max normalized to `[0, 1]`. Information-content and tie-breaking randomness use the fixed default seed `42`. Undefined scalar results follow the public DesignX sanitization rule: `NaN -> 0` and `Inf -> 1`. Finite negative values are retained because they are valid outputs for features such as adjusted R-squared. The default post-extraction divisor is `1.0`, so no second scaling is applied.
+
+The sampling protocols are deliberately explicit:
+
+- Static RL computes `e_0` from the initial NeuroEA population, so the ELA sample count equals `--population-size`.
+- Dynamic RL recomputes ELA from the current population at every generation.
+- The standalone audit command below defaults to the DesignX offline sampling convention of `100 * D` points.
+
+At `D=20`, the linear interaction model contains `210` predictors. A population of `100` therefore makes its adjusted R-squared statistically underdetermined, while the DesignX offline sample of `2000` points does not. The implementation emits a `RuntimeWarning` for this condition. Paper results must state whether ELA is population-based (`N=100`) or independently sampled (`N=100*D`); these protocols are not interchangeable.
+
+```powershell
+python .\RL\shared\ELA\ELA.py `
+  --problem-names BBOB_F1 `
+  --dimension 10 `
+  --sample-factor 100 `
+  --seed 42
+```
+
+ELA extraction is fail-fast. Missing dependencies, invalid samples, constant objective values, or calculation errors stop the run with an explicit exception; the environment never silently replaces a failed ELA vector with zeros.
 
 ## Repository Structure
 
@@ -55,7 +91,7 @@ NeuroEA_RL/
     │   ├── train_td3_static.py  # Main static TD3 entry point
     │   ├── batch_train_sac_static.py
     │   ├── multi_seed_train_sac_static.py
-    │   └── action_history_env.py
+    │   └── action_history_env.py # Legacy 69-dimensional environment (not used by main scripts)
     └── shared/                  # SAC, TD3, replay buffers, trainers, ELA, and environments
 ```
 
@@ -82,7 +118,7 @@ python .\RL\Dynamic\train_sac_dynamic.py --help
 python .\RL\Static\train_sac_static.py --help
 ```
 
-> `scipy` and `scikit-learn` are required to calculate ELA features. If these dependencies cannot be imported, the environment falls back to an all-zero ELA vector. Training may continue, but the experimental setting will no longer be equivalent.
+> ELA extraction requires the pinned `pflacco==1.2.2` dependency and its compatible NumPy, SciPy, and scikit-learn versions from `requirements.txt`. Dependency or extraction failures stop training instead of silently substituting an all-zero vector.
 
 ## Quick Start
 
@@ -103,12 +139,12 @@ python .\RL\Dynamic\train_sac_dynamic.py `
   --output-root RL/runs/dynamic/smoke
 ```
 
-### Dynamic SAC training
+### Default dynamic SAC training
 
 ```powershell
 python .\RL\Dynamic\train_sac_dynamic.py `
   --problem-names SOP_F1 `
-  --episodes 10000 `
+  --episodes 5000 `
   --population-size 100 `
   --dimension 10 `
   --max-fe 10000 `
@@ -116,7 +152,7 @@ python .\RL\Dynamic\train_sac_dynamic.py `
   --output-root RL/runs/dynamic/sac_sopf1
 ```
 
-The dynamic entry point accepts comma-separated problem names and inclusive problem ranges. A separate model is trained for every problem:
+The dynamic entry point accepts comma-separated problem names and inclusive problem ranges. A separate model is trained for every problem. The following 1000-episode command is a reduced-budget orchestration example, not the paper configuration:
 
 ```powershell
 python .\RL\Dynamic\train_sac_dynamic.py `
@@ -138,27 +174,27 @@ python .\RL\Static\train_sac_static.py `
   --log-dir RL/runs/Static/smoke
 ```
 
-### Static SAC training
+### Default static SAC training
 
 ```powershell
 python .\RL\Static\train_sac_static.py `
   --problem-names SOP_F1 `
-  --episodes 10000 `
+  --episodes 5000 `
   --population-size 100 `
   --dimension 10 `
   --max-fe 10000 `
   --device cpu `
-  --log-dir RL/runs/Static/action_history_sopf1
+  --log-dir RL/runs/Static/paper_state_sopf1
 ```
 
 ### Static TD3 training
 
-Static TD3 uses the same action-history environment and sequential reward assignment as static SAC, but replaces the stochastic SAC policy with a deterministic TD3 policy and target-policy smoothing:
+Static TD3 uses the same paper-state environment, `s_i = [e_0, h_i]`, and sequential reward assignment as static SAC, but replaces the stochastic SAC policy with a deterministic TD3 policy and target-policy smoothing:
 
 ```powershell
 python .\RL\Static\train_td3_static.py `
   --problem-names SOP_F1 `
-  --episodes 10000 `
+  --episodes 5000 `
   --population-size 100 `
   --dimension 10 `
   --max-fe 10000 `
@@ -167,21 +203,20 @@ python .\RL\Static\train_td3_static.py `
   --policy-noise 0.2 `
   --noise-clip 0.5 `
   --policy-delay 2 `
-  --log-dir RL/runs/Static/action_history_td3_sopf1
+  --log-dir RL/runs/Static/paper_state_td3_sopf1
 ```
 
-The static entry point accepts comma-separated problem names. A single SAC model can be trained across multiple tasks using either cyclic or random task selection:
+The static entry point accepts comma-separated problem names. A single SAC model can be trained across multiple tasks using either cyclic or random task selection. The strict paper-state implementation intentionally excludes task context:
 
 ```powershell
 python .\RL\Static\train_sac_static.py `
   --problem-names "SOP_F1,SOP_F2,SOP_F3" `
   --task-mode cycle `
-  --include-task-context `
-  --episodes 10000 `
+  --episodes 5000 `
   --log-dir RL/runs/Static/multitask_sop
 ```
 
-### Train an independent static model for each problem
+### Example: independent static models with a reduced budget
 
 ```powershell
 python .\RL\Static\batch_train_sac_static.py `
@@ -190,7 +225,7 @@ python .\RL\Static\batch_train_sac_static.py `
   --output-root RL/runs/Static/sop_f1_f10
 ```
 
-### Multi-seed static experiments
+### Example: multi-seed static experiments with a reduced budget
 
 ```powershell
 python .\RL\Static\multi_seed_train_sac_static.py `
@@ -202,6 +237,47 @@ python .\RL\Static\multi_seed_train_sac_static.py `
 
 `--seeds` also accepts inclusive integer ranges, for example `--seeds 0-4`.
 
+## Reproducing the Paper
+
+The paper experiments use the following training budget. These values, rather than the smoke-test settings above, should be used when reproducing reported results:
+
+| Setting | Paper value |
+| --- | ---: |
+| Training episodes | `5000` |
+| Population size | `100` |
+| Maximum function evaluations | `10000` |
+| Decision-space dimensions | `10` and `20` |
+
+Run each paper problem and random seed at both dimensions. For example, the commands below reproduce the training budget for `SOP_F1`:
+
+```powershell
+foreach ($d in 10, 20) {
+  python .\RL\Dynamic\train_sac_dynamic.py `
+    --problem-names SOP_F1 `
+    --episodes 5000 `
+    --population-size 100 `
+    --dimension $d `
+    --max-fe 10000 `
+    --device cpu `
+    --output-root "RL/runs/paper/dynamic/dim$d"
+}
+```
+
+```powershell
+foreach ($d in 10, 20) {
+  python .\RL\Static\train_sac_static.py `
+    --problem-names SOP_F1 `
+    --episodes 5000 `
+    --population-size 100 `
+    --dimension $d `
+    --max-fe 10000 `
+    --device cpu `
+    --log-dir "RL/runs/paper/static/dim$d"
+}
+```
+
+For the complete paper results, repeat these commands with the exact problem list and random seeds reported in the experiment protocol. Do not use the smoke-test settings for result reproduction.
+
 ## Main Arguments
 
 ### Shared arguments
@@ -209,7 +285,7 @@ python .\RL\Static\multi_seed_train_sac_static.py `
 | Argument | Default | Description |
 | --- | ---: | --- |
 | `--problem-names` | `SOP_F1` | Problem names, separated by commas when multiple tasks are used |
-| `--episodes` | `10000` | Number of training episodes; for dynamic multi-problem training, this is the number per problem |
+| `--episodes` | `5000` | Number of training episodes; for dynamic multi-problem training, this is the number per problem |
 | `--dimension` | `10` | Decision-space dimension |
 | `--population-size` | `100` | Population size |
 | `--max-fe` | `10000` | Maximum function evaluations in each NeuroEA run |
@@ -221,13 +297,13 @@ python .\RL\Static\multi_seed_train_sac_static.py `
 | `--save-every` | `1000` | Checkpoint interval in episodes |
 | `--start-steps` | `128` | Initial environment steps that use random actions |
 | `--updates-per-step` | `1` | Gradient updates performed at each training opportunity |
-| `--include-task-context` | disabled | Add task identity and normalized task configuration to the observation |
+| `--include-task-context` | disabled | Add task identity and normalized task configuration to dynamic observations; strict static paper-state training rejects this option |
 
 ### Dynamic SAC arguments
 
 | Argument | Default | Description |
 | --- | ---: | --- |
-| `--objectives` | `2` | Number of objectives passed to the optimization problem |
+| `--objectives` | `1` | Number of objectives passed to the single-objective optimization problem |
 | `--batch-size` | `64` | SAC batch size |
 | `--hidden-dims` | `128,128` | Actor and critic hidden-layer dimensions |
 | `--actor-lr` | `3e-4` | Actor learning rate |
@@ -249,7 +325,7 @@ python .\RL\Static\multi_seed_train_sac_static.py `
 | `--default-close-radius` | `0.6` | Radius used to identify actions close to the default parameter |
 | `--default-close-signed-weight` | `0.0` | Signed shaping weight for actions close to the default parameter |
 | `--final-only-after-episode` | `None` | Episode threshold after which only the final reward is assigned |
-| `--log-dir` | `RL/runs/Static/action_history_sac_sop_f1` | Output directory for a static training run |
+| `--log-dir` | `RL/runs/Static/paper_state_sac_sop_f1` | Output directory for a static training run |
 
 ### Static TD3 arguments
 
@@ -313,9 +389,9 @@ Pass the generated checkpoint and its matching problem configuration to the eval
 - Retain `run_config.json` with every result to record the complete configuration and random seed.
 - Keep the problem, dimension, population size, evaluation budget, and evaluation seeds fixed when comparing methods.
 - Use multiple random seeds for final experiments, and report means, standard deviations, and per-seed results.
-- Verify that `scipy` and `scikit-learn` can be imported before running ELA-based experiments.
+- Install the pinned ELA stack from `requirements.txt` and record `ela_implementation` from each run's `run_config.json`.
 - Do not commit large checkpoints and generated training logs directly to Git. Consider GitHub Releases, Git LFS, or external storage when model files need to be published.
 
 ## License
 
-This repository does not currently include an open-source license. Add an appropriate `LICENSE` file before public distribution or reuse by third parties.
+This project is released under the [MIT License](LICENSE).

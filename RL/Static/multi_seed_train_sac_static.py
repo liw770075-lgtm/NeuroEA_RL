@@ -1,4 +1,4 @@
-"""Train independent action-history static SAC models with multiple seeds."""
+"""Train independent paper-state static SAC models with multiple seeds."""
 
 from __future__ import annotations
 
@@ -56,7 +56,7 @@ def main():
     parser = add_arguments(argparse.ArgumentParser(description=__doc__), "output-root")
     parser.set_defaults(
         problem_names="SOP_F1",
-        output_root="RL/runs/Static/action_history_sopf1_multi_seed",
+        output_root="RL/runs/Static/paper_state_sopf1_multi_seed",
     )
     parser.add_argument(
         "--seeds",
@@ -71,13 +71,13 @@ def main():
     for problem_name in problems:
         task = ProblemTask(
             problem_name,
-            (args.population_size, 2, args.dimension, args.max_fe),
+            (args.population_size, 1, args.dimension, args.max_fe),
         )
         for seed in seeds:
             run_args = copy(args)
             run_args.seed = seed
             log_dir = Path(args.output_root) / problem_name / f"seed_{seed}"
-            print(f"\n===== Static action history: {problem_name}, seed={seed} =====")
+            print(f"\n===== Static paper state: {problem_name}, seed={seed} =====")
             summary = train(run_args, [task], log_dir, seed)
             summary.update(problem_name=problem_name, seed=seed, log_dir=str(log_dir))
             summaries.append(summary)

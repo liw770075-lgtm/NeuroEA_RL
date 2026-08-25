@@ -1,4 +1,4 @@
-"""Train one independent action-history static SAC model per problem."""
+"""Train one independent paper-state static SAC model per problem."""
 
 from __future__ import annotations
 
@@ -34,15 +34,15 @@ def parse_names(text):
 
 def main():
     parser = add_arguments(argparse.ArgumentParser(description=__doc__), "output-root")
-    parser.set_defaults(problem_names="SOP_F1-SOP_F10", episodes=1000)
+    parser.set_defaults(problem_names="SOP_F1-SOP_F10", episodes=5000)
     args = parser.parse_args()
     summaries = []
     for index, problem_name in enumerate(parse_names(args.problem_names)):
         seed = args.seed + index * args.seed_stride
-        print(f"\n===== Static action history: {problem_name} =====")
+        print(f"\n===== Static paper state: {problem_name} =====")
         task = ProblemTask(
             problem_name,
-            (args.population_size, 2, args.dimension, args.max_fe),
+            (args.population_size, 1, args.dimension, args.max_fe),
         )
         summary = train(args, [task], Path(args.output_root) / problem_name, seed)
         summary.update(problem_name=problem_name, seed=seed)

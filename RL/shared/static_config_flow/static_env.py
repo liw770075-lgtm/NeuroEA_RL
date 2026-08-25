@@ -50,7 +50,7 @@ class StaticStepNeuroEAConfigEnv(EnvBase):
         dtype=None,
         seed=0,
         include_task_context=False,
-        ela_feature_scale=100.0,
+        ela_feature_scale=1.0,
         ela_objective_index=0,
         action_adapter=None,
         reward_clip=None,
@@ -216,30 +216,23 @@ class StaticStepNeuroEAConfigEnv(EnvBase):
     def _compute_static_ela(self, state):
         population_dec = _to_numpy(state.get("population_dec"), dtype=np.float64)
         population_obj = _to_numpy(state.get("population_obj"), dtype=np.float64)
-        fallback = np.zeros(9, dtype=np.float32)
-
         if population_dec is None or population_obj is None:
-            return fallback
+            raise ValueError("Static ELA extraction requires population_dec and population_obj.")
         x = np.asarray(population_dec, dtype=np.float64)
         y = self._select_objective(population_obj, expected_rows=x.shape[0])
         if x.ndim != 2 or y is None or y.shape[0] != x.shape[0]:
-            return fallback
+            raise ValueError(
+                f"Invalid static ELA population shapes: X={x.shape}, "
+                f"Y={None if y is None else y.shape}."
+            )
 
-        try:
-            from RL.shared.ELA.ELA import compute_ela_features
+        from RL.shared.ELA.ELA import ELA_FEATURE_DIM, compute_ela_features
 
-            features = compute_ela_features(x, y)
-        except Exception:
-            return fallback
-
-        features = np.asarray(features, dtype=np.float32).reshape(-1)
-        if features.shape[0] < 9:
-            padded = np.zeros(9, dtype=np.float32)
-            padded[: features.shape[0]] = features
-            features = padded
-        else:
-            features = features[:9]
-        features = np.nan_to_num(features, nan=0.0, posinf=0.0, neginf=0.0)
+        features = np.asarray(compute_ela_features(x, y), dtype=np.float32).reshape(-1)
+        if features.shape != (ELA_FEATURE_DIM,):
+            raise ValueError(
+                f"Expected {ELA_FEATURE_DIM} ELA features, received {features.shape[0]}."
+            )
         if self.ela_feature_scale is not None and self.ela_feature_scale > 0:
             features = features / self.ela_feature_scale
         return features.astype(np.float32, copy=False)

@@ -17,6 +17,7 @@ import numpy as np
 import torch
 
 from RL.shared.TD3.static.td3_agent import TD3Agent
+from RL.shared.ELA.ELA import ELA_FEATURE_NAMES, ELA_IMPLEMENTATION_VERSION
 from RL.Dynamic.common import (
     NORMALIZATION_VERSION,
     FirstActionReuseEnv,
@@ -50,11 +51,16 @@ def parse_args(forced_algorithm=None, forced_mode=None):
     parser.add_argument("--algorithm", choices=["sac", "td3"], default=forced_algorithm or "sac")
     parser.add_argument("--mode", choices=["dynamic", "first-action"], default=forced_mode or "dynamic")
     parser.add_argument("--problem-names", default="SOP_F1")
-    parser.add_argument("--episodes", type=int, default=10000, help="Episodes per problem.")
+    parser.add_argument(
+        "--episodes",
+        type=int,
+        default=5000,
+        help="Episodes per problem (paper default: 5000).",
+    )
     parser.add_argument("--dimension", type=int, default=10)
     parser.add_argument("--population-size", type=int, default=100)
     parser.add_argument("--max-fe", type=int, default=10000)
-    parser.add_argument("--objectives", type=int, default=2)
+    parser.add_argument("--objectives", type=int, default=1)
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--seed-stride", type=int, default=1000)
     parser.add_argument("--device", default="cpu")
@@ -70,7 +76,7 @@ def parse_args(forced_algorithm=None, forced_mode=None):
     parser.add_argument("--critic-lr", type=float, default=3e-4)
     parser.add_argument("--gamma", type=float, default=0.99)
     parser.add_argument("--tau", type=float, default=0.005)
-    parser.add_argument("--ela-feature-scale", type=float, default=100.0)
+    parser.add_argument("--ela-feature-scale", type=float, default=1.0)
     parser.add_argument("--ela-objective-index", type=int, default=0)
     parser.add_argument("--summary-clip", type=float, default=5.0)
     parser.add_argument("--objective-log-scale", type=float, default=10.0)
@@ -196,6 +202,8 @@ def train_problem(args, problem_name, problem_index):
         "problem_name": problem_name,
         "seed": run_seed,
         "normalization_version": NORMALIZATION_VERSION,
+        "ela_implementation": ELA_IMPLEMENTATION_VERSION,
+        "ela_feature_names": list(ELA_FEATURE_NAMES),
         "args": {**vars(args), "hidden_dims": list(args.hidden_dims)},
     }
     save_json(log_dir / "run_config.json", run_config)
@@ -217,6 +225,8 @@ def train_problem(args, problem_name, problem_index):
         "observation_dim": observation_dim,
         "action_dim": action_dim,
         "normalization_version": NORMALIZATION_VERSION,
+        "ela_implementation": ELA_IMPLEMENTATION_VERSION,
+        "ela_feature_names": list(ELA_FEATURE_NAMES),
         "reward_first_10_mean": float(rewards[:10].mean()),
         "reward_last_10_mean": float(rewards[-10:].mean()),
         "best_first_10_mean": float(fitness[:10].mean()),

@@ -183,7 +183,7 @@ def parse_args():
     parser.add_argument("--dtype", type=str, default="float64", help="Environment dtype.")
     parser.add_argument("--task-mode", type=str, default="cycle", choices=["cycle", "random"], help="Task sampling mode.")
     parser.add_argument("--use-ela-observation", action="store_true", help="Build the same ELA observation as SAC runs.")
-    parser.add_argument("--ela-feature-scale", type=float, default=100.0, help="Divide ELA features by this scale.")
+    parser.add_argument("--ela-feature-scale", type=float, default=1.0, help="Optional post-extraction ELA divisor.")
     parser.add_argument("--ela-objective-index", type=int, default=0, help="Objective column used for ELA.")
     parser.add_argument(
         "--log-dir",
@@ -210,7 +210,7 @@ def resolve_max_fe(args):
 def make_env(args):
     max_fe = resolve_max_fe(args)
     tasks = [
-        ProblemTask(problem_name, (args.population_size, 2, args.dimension, max_fe))
+        ProblemTask(problem_name, (args.population_size, 1, args.dimension, max_fe))
         for problem_name in parse_csv_strings(args.problem_names)
     ]
     if args.use_ela_observation:

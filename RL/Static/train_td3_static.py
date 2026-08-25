@@ -1,4 +1,4 @@
-"""Train sequential static TD3 with previous actions included in the state."""
+"""Train sequential static TD3 with the paper state s_i = [e_0, h_i]."""
 
 from __future__ import annotations
 
@@ -25,7 +25,7 @@ def parse_hidden_dims(text):
 
 def parse_args():
     parser = add_arguments(argparse.ArgumentParser(description=__doc__))
-    parser.set_defaults(log_dir="RL/runs/Static/action_history_td3_sop_f1")
+    parser.set_defaults(log_dir="RL/runs/Static/paper_state_td3_sop_f1")
     parser.add_argument("--hidden-dims", type=parse_hidden_dims, default=(128, 128))
     parser.add_argument("--actor-lr", type=float, default=3e-4)
     parser.add_argument("--critic-lr", type=float, default=3e-4)
@@ -41,7 +41,7 @@ def parse_args():
 def main():
     args = parse_args()
     tasks = [
-        ProblemTask(name, (args.population_size, 2, args.dimension, args.max_fe))
+        ProblemTask(name, (args.population_size, 1, args.dimension, args.max_fe))
         for name in parse_names(args.problem_names)
     ]
     summary = train(args, tasks, args.log_dir, args.seed, algorithm="td3")

@@ -194,7 +194,7 @@ def main():
     torch.manual_seed(args.seed)
 
     tasks = [
-        ProblemTask(problem_name, (args.population_size, 2, args.dimension, args.max_fe))
+        ProblemTask(problem_name, (args.population_size, 1, args.dimension, args.max_fe))
         for problem_name in parse_csv_strings(args.problem_names)
     ]
 

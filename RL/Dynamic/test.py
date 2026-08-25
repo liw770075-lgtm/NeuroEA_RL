@@ -17,6 +17,7 @@ import numpy as np
 import torch
 
 from RL.shared.TD3.static.td3_agent import TD3Agent
+from RL.shared.ELA.ELA import ELA_IMPLEMENTATION_VERSION
 from RL.Dynamic.common import (
     NORMALIZATION_VERSION,
     StableELAObservationBuilder,
@@ -51,7 +52,7 @@ def parse_args(
     parser.add_argument("--dimension", type=int, default=10)
     parser.add_argument("--population-size", type=int, default=100)
     parser.add_argument("--max-fe", type=int, default=10000)
-    parser.add_argument("--objectives", type=int, default=2)
+    parser.add_argument("--objectives", type=int, default=1)
     parser.add_argument("--device", default="cpu")
     parser.add_argument("--dtype", default="float64")
     parser.add_argument("--output", default=None)
@@ -108,6 +109,13 @@ def load_run_config(checkpoint_path):
 
 def build_environment(args, problem_name, run_config):
     train_args = run_config.get("args", {})
+    ela_implementation = run_config.get("ela_implementation")
+    if ela_implementation != ELA_IMPLEMENTATION_VERSION:
+        raise ValueError(
+            "Checkpoint uses an incompatible ELA implementation. "
+            f"Expected {ELA_IMPLEMENTATION_VERSION!r}, "
+            f"got {ela_implementation!r}; retrain the model."
+        )
     normalization_version = run_config.get("normalization_version")
     if normalization_version not in (None, NORMALIZATION_VERSION):
         raise ValueError(
@@ -129,14 +137,14 @@ def build_environment(args, problem_name, run_config):
         observation_builder = ELAObservationBuilder(
             include_population=False,
             include_task_context=bool(train_args.get("include_task_context", False)),
-            feature_scale=float(train_args.get("ela_feature_scale", 100.0)),
+            feature_scale=float(train_args.get("ela_feature_scale", 1.0)),
             objective_index=int(train_args.get("ela_objective_index", 0)),
         )
     else:
         observation_builder = StableELAObservationBuilder(
             include_population=False,
             include_task_context=bool(train_args.get("include_task_context", False)),
-            feature_scale=float(train_args.get("ela_feature_scale", 100.0)),
+            feature_scale=float(train_args.get("ela_feature_scale", 1.0)),
             objective_index=int(train_args.get("ela_objective_index", 0)),
             summary_clip=float(train_args.get("summary_clip", 5.0)),
             objective_log_scale=float(train_args.get("objective_log_scale", 10.0)),

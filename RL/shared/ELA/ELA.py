@@ -1,163 +1,215 @@
+"""Paper-aligned exploratory landscape analysis (ELA) features.
+
+The feature names and order follow Table 4 of DesignX and are computed with
+the standard implementations provided by pflacco. Objective values are
+min-max normalized before extraction, matching the public DesignX pipeline.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+from pathlib import Path
+import sys
+from typing import Iterable
+import warnings
+
 import numpy as np
-from scipy.spatial.distance import pdist, squareform
-from sklearn.linear_model import LinearRegression
-from sklearn.metrics import r2_score
-import time
-from scipy import stats  # 导入 scipy 用于统计计算
+import torch
+from pflacco.classical_ela_features import (
+    calculate_ela_distribution,
+    calculate_ela_meta,
+    calculate_information_content,
+    calculate_nbc,
+)
 
 
-# --- 修改后的测试用 ELA 计算函数 ---
-def _adjusted_r2(r2, n, p):
-    if p >= n:
+ELA_FEATURE_NAMES = (
+    "ela_meta.lin_simple.intercept",
+    "ela_meta.quad_simple.adj_r2",
+    "ela_meta.lin_w_interact.adj_r2",
+    "ic.m0",
+    "ic.h_max",
+    "ic.eps_ratio",
+    "nbc.nn_nb.mean_ratio",
+    "nbc.dist_ratio.coeff_var",
+    "ela_distr.number_of_peaks",
+)
+ELA_FEATURE_DIM = len(ELA_FEATURE_NAMES)
+DEFAULT_ELA_SEED = 42
+ELA_IMPLEMENTATION_VERSION = "designx_table4_pflacco_1.2.2_v1"
+
+
+def _validate_samples(X, Y):
+    x = np.asarray(X, dtype=np.float64)
+    y = np.asarray(Y, dtype=np.float64).reshape(-1)
+    if x.ndim != 2:
+        raise ValueError(f"X must be a two-dimensional array; received shape {x.shape}.")
+    if x.shape[0] != y.shape[0]:
+        raise ValueError(
+            f"X and Y must contain the same number of samples; "
+            f"received {x.shape[0]} and {y.shape[0]}."
+        )
+    if x.shape[0] < 21:
+        raise ValueError(
+            "At least 21 samples are required by the default "
+            "information-content neighborhood."
+        )
+    if x.shape[1] == 0:
+        raise ValueError("X must contain at least one decision variable.")
+    interaction_predictors = x.shape[1] + x.shape[1] * (x.shape[1] - 1) // 2
+    if x.shape[0] <= interaction_predictors + 1:
+        warnings.warn(
+            "The linear interaction model is underdetermined: "
+            f"{x.shape[0]} samples for {interaction_predictors} predictors. "
+            "Its adjusted R-squared is not statistically well-defined; "
+            "increase the ELA sample count or document this limitation.",
+            RuntimeWarning,
+            stacklevel=3,
+        )
+    if not np.all(np.isfinite(x)) or not np.all(np.isfinite(y)):
+        raise ValueError("X and Y must contain only finite values.")
+    y_span = float(np.ptp(y))
+    if y_span <= np.finfo(np.float64).eps:
+        raise ValueError("ELA features are undefined when all objective values are equal.")
+    return x, (y - float(np.min(y))) / y_span
+
+
+def _sanitize_feature(value):
+    if value is None:
         return 0.0
-    return 1 - (1 - r2) * (n - 1) / (n - p - 1)
+    scalar = float(np.asarray(value).reshape(()))
+    if np.isnan(scalar):
+        return 0.0
+    if np.isinf(scalar):
+        return 1.0
+    return scalar
 
 
-def compute_ela_features(X, Y, seed=None):
-    X = np.asarray(X, dtype=np.float64)
-    Y = np.asarray(Y, dtype=np.float64).flatten()
-    n, d = X.shape
+def compute_ela_feature_dict(X, Y, seed=DEFAULT_ELA_SEED):
+    """Return the nine paper features as an insertion-ordered dictionary."""
 
-    if n <= 1 or d == 0:
-        return np.zeros(9)
+    x, y = _validate_samples(X, Y)
+    numpy_state = np.random.get_state()
+    if seed is not None:
+        np.random.seed(int(seed))
+    try:
+        feature_sets = (
+            calculate_ela_meta(x, y),
+            calculate_information_content(x, y, seed=seed),
+            calculate_nbc(x, y, dist_tie_breaker="sample", minimize=True),
+            calculate_ela_distribution(x, y),
+        )
+    except Exception as exc:
+        raise RuntimeError(
+            f"Standard pflacco ELA extraction failed for X shape {x.shape}."
+        ) from exc
+    finally:
+        np.random.set_state(numpy_state)
 
-    # --- 1. Meta-model features ---
-    # lin_simple.intercept
-    lr1 = LinearRegression(fit_intercept=True).fit(X, Y)
-    intercept = lr1.intercept_
+    available = {}
+    for feature_set in feature_sets:
+        available.update(feature_set)
+    missing = [name for name in ELA_FEATURE_NAMES if name not in available]
+    if missing:
+        raise RuntimeError(f"pflacco did not return required ELA features: {missing}.")
+    return {name: _sanitize_feature(available[name]) for name in ELA_FEATURE_NAMES}
 
-    # quad_simple.adj_r2
-    X_quad = np.hstack([X, X ** 2])
-    lr2 = LinearRegression(fit_intercept=True).fit(X_quad, Y)
-    r2_quad = r2_score(Y, lr2.predict(X_quad))
-    adj_r2_quad = _adjusted_r2(r2_quad, n, 2 * d)
 
-    # lin_w_interact.adj_r2 (limit to first min(d,5) dims to avoid explosion)
-    d_use = min(d, 5)
-    X_sub = X[:, :d_use]
-    interactions = []
-    for i in range(d_use):
-        for j in range(i + 1, d_use):
-            interactions.append(X_sub[:, i] * X_sub[:, j])
-    if interactions:
-        X_inter = np.hstack([X, np.column_stack(interactions)])
-        lr3 = LinearRegression(fit_intercept=True).fit(X_inter, Y)
-        r2_inter = r2_score(Y, lr3.predict(X_inter))
-        p_total = d + len(interactions)
-        adj_r2_inter = _adjusted_r2(r2_inter, n, p_total)
-    else:
-        adj_r2_inter = 0.0
+def compute_ela_features(X, Y, seed=DEFAULT_ELA_SEED):
+    """Return the paper-aligned ELA vector in ELA_FEATURE_NAMES order."""
 
-    # --- 2. Information Content ---
-    eps = 0.05 * (Y.max() - Y.min() + 1e-12)
-    diff = np.diff(Y)
-    signs = np.sign(diff)
-    signs[signs == 0] = 1
-    m0 = np.mean(signs[:-1] != signs[1:]) if len(signs) > 1 else 0.0
+    return np.asarray(
+        list(compute_ela_feature_dict(X, Y, seed=seed).values()),
+        dtype=np.float64,
+    )
 
-    uniq, cnt = np.unique(signs, return_counts=True)
-    prob = cnt / cnt.sum()
-    h_max = -np.sum(prob * np.log(prob + 1e-12))
 
-    pairwise = np.abs(Y[:, None] - Y[None, :])
-    triu_vals = pairwise[np.triu_indices(n, k=1)]
-    eps_ratio = np.mean(triu_vals < eps) if triu_vals.size > 0 else 0.0
+def get_ela_from_neuroea(
+    problem_name,
+    D=10,
+    ela_sample=100,
+    seed=DEFAULT_ELA_SEED,
+):
+    """Sample a torch NeuroEA problem and return its paper-aligned ELA vector."""
 
-    # --- 3. NBC ---
-    dists = squareform(pdist(X))
-    np.fill_diagonal(dists, np.inf)
-    k = min(5, n - 1)
-    neighbor_idx = np.argpartition(dists, k, axis=1)[:, :k]
+    project_root = Path(__file__).resolve().parents[3]
+    if str(project_root) not in sys.path:
+        sys.path.insert(0, str(project_root))
 
-    better_ratios = []
-    dist_ratios = []
-    for i in range(n):
-        nb = neighbor_idx[i]
-        better_count = np.sum(Y[nb] < Y[i])
-        better_ratios.append(better_count / k)
+    from NeuroEA_GEA_torch.Problems import get_problem_instance
+    from NeuroEA_GEA_torch.utils.rng import NumpyTorchRNG
 
-        better_mask = Y[nb] < Y[i]
-        if np.any(better_mask):
-            min_better = dists[i, nb][better_mask].min()
-        else:
-            min_better = dists[i].min()
-        min_nb_dist = dists[i, nb].min()
-        dist_ratios.append(min_better / (min_nb_dist + 1e-12))
+    dimension = int(D)
+    sample_size = int(ela_sample) * dimension
+    if dimension <= 0 or sample_size < 21:
+        raise ValueError("D must be positive and ela_sample * D must be at least 21.")
+    rng = NumpyTorchRNG(seed=int(seed), device="cpu", dtype=torch.float64)
+    problem = get_problem_instance(
+        problem_name,
+        N=sample_size,
+        M=1,
+        D=dimension,
+        max_fe=max(10_000, sample_size),
+        device="cpu",
+        dtype=torch.float64,
+        rng=rng,
+    )
+    population = problem.initialization()
+    x = population.dec.detach().cpu().numpy()
+    y = population.obj.detach().cpu().numpy().reshape(-1)
+    return compute_ela_features(x, y, seed=seed)
 
-    mean_ratio = np.mean(better_ratios)
-    cv = np.std(dist_ratios) / (np.mean(dist_ratios) + 1e-12)
 
-    # --- 4. Peaks ---
-    Y_norm = (Y - Y.min()) / (Y.max() - Y.min() + 1e-12)
-    n_peaks = np.sum(Y_norm < 0.1)
+def get_ela_from_neuroea_batch(
+    problem_names: Iterable[str],
+    D=10,
+    ela_sample=100,
+    seed=DEFAULT_ELA_SEED,
+):
+    """Return one ELA vector per problem; failures are reported, not hidden."""
 
-    # --- Assemble & sanitize ---
-    feats = [
-        intercept,
-        adj_r2_quad,
-        adj_r2_inter,
-        m0,
-        h_max,
-        eps_ratio,
-        mean_ratio,
-        cv,
-        n_peaks
+    vectors = [
+        get_ela_from_neuroea(name, D=D, ela_sample=ela_sample, seed=seed)
+        for name in problem_names
     ]
-    feats = [float(f) for f in feats]
-    feats = [0.0 if np.isnan(x) or x < 0 else min(x, 100.0) for x in feats]
-    return np.array(feats[:9])
-# def compute_ela_features(X, Y, seed=42):
-#     """
-#     修正版：使用 scipy 计算基础统计特征作为 ELA 占位符
-#     """
-#     # 基础统计特征
-#     f_mean = np.mean(Y)
-#     f_std = np.std(Y)
-#     f_range = np.max(Y) - np.min(Y)
-#
-#     # 使用 scipy 计算偏度和峰度 (针对 Y 或 X 的均值)
-#     y_skew = stats.skew(Y)
-#     y_kurt = stats.kurtosis(Y)
-#
-#     return np.array([f_mean, f_std, f_range, y_skew, y_kurt])
+    if not vectors:
+        return np.empty((0, ELA_FEATURE_DIM), dtype=np.float64)
+    return np.vstack(vectors)
 
 
-# --- 你的主提取逻辑 (保持不变，仅确认属性名) ---
-def get_ela_from_neuroea_batch(problem_names, D=10, ela_sample=50, seed=42):
-    """
-    修改版：处理问题名称列表，返回 ELA 特征列表
-    """
-    ela_list = []
-    for name in problem_names:
-        print(f"[*] 正在为 {name} 提取 ELA 特征...")
-        N = ela_sample * D
-        para = [N, 1, D, 10000]
+def parse_args():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--problem-names", default="BBOB_F1,BBOB_F2")
+    parser.add_argument("--dimension", type=int, default=10)
+    parser.add_argument(
+        "--sample-factor",
+        type=int,
+        default=100,
+        help="Number of sampled solutions per decision variable.",
+    )
+    parser.add_argument("--seed", type=int, default=DEFAULT_ELA_SEED)
+    return parser.parse_args()
 
-        try:
-            from NeuroEA_GEA.Problems import get_problem_instance
-            # 实例化当前循环中的问题
-            problem = get_problem_instance(name, *para)
-            initial_solutions = problem.initialization()
 
-            # 提取数据
-            X_np = np.array([sol.dec for sol in initial_solutions])
-            Y_np = np.array([sol.obj for sol in initial_solutions]).flatten()
-
-            # 调用你之前的 9 维计算函数
-            ela_vec = compute_ela_features(X_np, Y_np, seed=seed)
-            ela_list.append(ela_vec)
-        except Exception as e:
-            print(f"[错误] {name} 计算失败: {e}")
-            # 如果失败，填充 9 维零向量保持维度一致
-            ela_list.append(np.zeros(9))
-
-    return np.array(ela_list)
+def main():
+    args = parse_args()
+    names = [item.strip() for item in args.problem_names.split(",") if item.strip()]
+    vectors = get_ela_from_neuroea_batch(
+        names,
+        D=args.dimension,
+        ela_sample=args.sample_factor,
+        seed=args.seed,
+    )
+    payload = {
+        "feature_names": list(ELA_FEATURE_NAMES),
+        "problems": {
+            name: vector.tolist()
+            for name, vector in zip(names, vectors)
+        },
+    }
+    print(json.dumps(payload, indent=2, ensure_ascii=False))
 
 
 if __name__ == "__main__":
-    # 再次运行测试
-    for p_name in ['BBOB_F1', 'BBOB_F2']:
-        print(f"[*] 测试 {p_name}...")
-        features = get_ela_from_neuroea(p_name)
-        if features is not None:
-            print(f"[成功] 特征向量: {features.round(4)}")
+    main()

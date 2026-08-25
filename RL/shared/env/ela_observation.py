@@ -27,7 +27,7 @@ class ELAObservationBuilder(PopulationObservationBuilder):
         normalize_control: bool = True,
         include_task_context: bool = True,
         feature_dim: int = 9,
-        feature_scale: float | None = 100.0,
+        feature_scale: float | None = 1.0,
         objective_index: int = 0,
     ):
         super().__init__(
@@ -38,7 +38,6 @@ class ELAObservationBuilder(PopulationObservationBuilder):
         self.feature_scale = None if feature_scale is None else float(feature_scale)
         self.objective_index = int(objective_index)
         self.include_task_context = bool(include_task_context)
-        self._ela_import_error = None
 
     def __call__(self, state, history_states=None):
         observation = super().__call__(state, history_states=history_states)
@@ -52,30 +51,25 @@ class ELAObservationBuilder(PopulationObservationBuilder):
         population_obj = _to_numpy(state.get("population_obj"), dtype=np.float64)
 
         if population_dec is None or population_obj is None:
-            return self._fallback()
+            raise ValueError("ELA extraction requires population_dec and population_obj.")
 
         x = np.asarray(population_dec, dtype=np.float64)
         y = self._select_objective(population_obj, expected_rows=x.shape[0])
         if x.ndim != 2 or y is None or y.shape[0] != x.shape[0]:
-            return self._fallback()
+            raise ValueError(
+                f"Invalid ELA population shapes: X={x.shape}, "
+                f"Y={None if y is None else y.shape}."
+            )
 
-        try:
-            from RL.shared.ELA.ELA import compute_ela_features
+        from RL.shared.ELA.ELA import compute_ela_features
 
-            features = compute_ela_features(x, y)
-        except Exception as exc:
-            self._ela_import_error = exc
-            return self._fallback()
-
-        features = np.asarray(features, dtype=np.float32).reshape(-1)
-        if features.shape[0] < self.feature_dim:
-            padded = np.zeros(self.feature_dim, dtype=np.float32)
-            padded[: features.shape[0]] = features
-            features = padded
-        else:
-            features = features[: self.feature_dim]
-
-        features = np.nan_to_num(features, nan=0.0, posinf=0.0, neginf=0.0)
+        features = np.asarray(compute_ela_features(x, y), dtype=np.float32).reshape(-1)
+        if features.shape != (self.feature_dim,):
+            raise ValueError(
+                f"Expected {self.feature_dim} ELA features, received {features.shape[0]}."
+            )
+        if not np.all(np.isfinite(features)):
+            raise ValueError("ELA extraction returned non-finite values.")
         if self.feature_scale is not None and self.feature_scale > 0:
             features = features / self.feature_scale
         return features.astype(np.float32, copy=False)
@@ -88,6 +82,3 @@ class ELAObservationBuilder(PopulationObservationBuilder):
             index = min(max(self.objective_index, 0), y.shape[1] - 1)
             return y[:, index].reshape(-1)
         return None
-
-    def _fallback(self):
-        return np.zeros(self.feature_dim, dtype=np.float32)
