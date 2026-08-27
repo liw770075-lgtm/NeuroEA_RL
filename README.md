@@ -1,5 +1,22 @@
 # NeuroEA-RL
 
+Official implementation of:
+
+**Trainable Evolutionary Algorithms: A Reinforcement Learning Perspective on Algorithm Configuration**
+
+Wenbiao Li, Shangshang Yang, Ye Tian, and Zimo Sheng
+
+The 8th International Conference on Data-driven Optimization of Complex Systems (DOCS 2026)
+
+## Overview
+
+NeuroEA-RL provides the official implementation of the reinforcement-learning-based
+configuration framework for NeuroEA. The framework studies two complementary
+configuration paradigms:
+
+- **Static configuration (S-SAC):** generates the 30 NeuroEA parameters before optimization and keeps them fixed during the run.
+- **Dynamic configuration (D-SAC):** updates the complete NeuroEA parameter vector online according to the current search state.
+
 NeuroEA-RL is a research project for learning the parameter configuration of NeuroEA with reinforcement learning. It provides a PyTorch implementation of NeuroEA and supports Soft Actor-Critic (SAC) and Twin Delayed Deep Deterministic Policy Gradient (TD3) agents for learning configuration policies:
 
 - **Dynamic configuration:** SAC produces a complete parameter vector for every NeuroEA generation.

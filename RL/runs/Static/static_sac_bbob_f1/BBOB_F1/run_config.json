@@ -1,0 +1,47 @@
+{
+  "algorithm": "SAC",
+  "state_design": "ela_parameter_index_one_hot_v1",
+  "ela_implementation": "designx_code_order_pflacco_1.2.2_v2",
+  "ela_feature_names": [
+    "ela_meta.lin_simple.intercept",
+    "ela_meta.lin_w_interact.adj_r2",
+    "ela_meta.quad_simple.adj_r2",
+    "ic.h_max",
+    "ic.eps_ratio",
+    "ic.m0",
+    "ela_distr.number_of_peaks",
+    "nbc.nn_nb.mean_ratio",
+    "nbc.dist_ratio.coeff_var"
+  ],
+  "args": {
+    "episodes": 5000,
+    "problem_names": "BBOB_F1",
+    "dimension": 10,
+    "population_size": 100,
+    "max_fe": 10000,
+    "seed": 0,
+    "device": "cpu",
+    "dtype": "float64",
+    "task_mode": "cycle",
+    "eval_every": 100,
+    "eval_rounds": 5,
+    "save_every": 1000,
+    "batch_size": 960,
+    "start_steps": 128,
+    "updates_per_step": 1,
+    "ela_feature_scale": 1.0,
+    "ela_objective_index": 0,
+    "reward_clip": null,
+    "actor_output_clip": 5.0,
+    "default_penalty_weight": 0.0,
+    "default_close_radius": 0.6,
+    "default_close_signed_weight": 0.0,
+    "final_only_after_episode": null,
+    "include_task_context": false,
+    "log_dir": "RL\\runs\\Static\\paper_state_sac_bbob_f1"
+  },
+  "seed": 0,
+  "problem_names": [
+    "BBOB_F1"
+  ]
+}

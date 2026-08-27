@@ -1,0 +1,55 @@
+{
+  "algorithm": "SAC",
+  "flow": "static_sequential_parameter_index",
+  "state_design": "ela + parameter_index_one_hot",
+  "ela_implementation": "designx_code_order_pflacco_1.2.2_v2",
+  "episodes": 5000,
+  "observation_dim": 39,
+  "action_dim": 1,
+  "num_params": 30,
+  "reward_first_10_mean": 11.12978725275555,
+  "reward_last_10_mean": 59.14687002072069,
+  "best_first_10_mean": 0.4105088800147839,
+  "best_last_10_mean": 4.139467611649565e-24,
+  "train_best_fitness": 1.1119795645764226e-28,
+  "before_eval": {
+    "reward_mean": 7.449806950579647,
+    "reward_std": 0.0,
+    "best_mean": 0.030024863171619988,
+    "best_std": 0.0,
+    "per_task": [
+      {
+        "task_name": "BBOB_F1",
+        "task_config": [
+          100,
+          1,
+          10,
+          10000
+        ],
+        "reward_mean": 7.449806950579647,
+        "best_mean": 0.030024863171619988
+      }
+    ]
+  },
+  "after_eval": {
+    "reward_mean": 60.44226841934805,
+    "reward_std": 0.0,
+    "best_mean": 8.498497559062061e-25,
+    "best_std": 0.0,
+    "per_task": [
+      {
+        "task_name": "BBOB_F1",
+        "task_config": [
+          100,
+          1,
+          10,
+          10000
+        ],
+        "reward_mean": 60.44226841934805,
+        "best_mean": 8.498497559062061e-25
+      }
+    ]
+  },
+  "best_checkpoint": "RL\\runs\\Static\\paper_state_sac_bbob_f1\\checkpoints\\best_fitness.pt",
+  "reward_curve_png": "RL\\runs\\Static\\paper_state_sac_bbob_f1\\reward_curve.png"
+}

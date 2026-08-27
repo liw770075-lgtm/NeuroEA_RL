@@ -1,0 +1,68 @@
+{
+  "algorithm": "SAC",
+  "mode": "dynamic",
+  "flow": "dynamic",
+  "problem_name": "BBOB_F1",
+  "seed": 0,
+  "episodes": 5000,
+  "observation_dim": 48,
+  "action_dim": 30,
+  "normalization_version": "stable_summary_v1",
+  "ela_implementation": "designx_code_order_pflacco_1.2.2_v2",
+  "ela_feature_names": [
+    "ela_meta.lin_simple.intercept",
+    "ela_meta.lin_w_interact.adj_r2",
+    "ela_meta.quad_simple.adj_r2",
+    "ic.h_max",
+    "ic.eps_ratio",
+    "ic.m0",
+    "ela_distr.number_of_peaks",
+    "nbc.nn_nb.mean_ratio",
+    "nbc.dist_ratio.coeff_var"
+  ],
+  "reward_first_10_mean": 18.884480194651882,
+  "reward_last_10_mean": 59.53507649611278,
+  "best_first_10_mean": 0.0009223623256026997,
+  "best_last_10_mean": 2.134081714737666e-22,
+  "policy_train_best_fitness": 1.6653402188026395e-29,
+  "before_eval": {
+    "reward_mean": 8.950488460476311,
+    "reward_std": 0.0,
+    "best_mean": 0.006675245292473602,
+    "best_std": 0.0,
+    "per_task": [
+      {
+        "task_name": "BBOB_F1",
+        "task_config": [
+          100,
+          1,
+          10,
+          10000
+        ],
+        "reward_mean": 8.950488460476311,
+        "best_mean": 0.006675245292473602
+      }
+    ]
+  },
+  "after_eval": {
+    "reward_mean": 64.89848763444071,
+    "reward_std": 0.0,
+    "best_mean": 3.361707432843296e-27,
+    "best_std": 0.0,
+    "per_task": [
+      {
+        "task_name": "BBOB_F1",
+        "task_config": [
+          100,
+          1,
+          10,
+          10000
+        ],
+        "reward_mean": 64.89848763444071,
+        "best_mean": 3.361707432843296e-27
+      }
+    ]
+  },
+  "best_checkpoint": "RL\\runs\\dynamic\\sac_bbob_f1\\BBOB_F1\\checkpoints\\best_fitness.pt",
+  "reward_curve_png": "RL\\runs\\dynamic\\sac_bbob_f1\\BBOB_F1\\reward_curve.png"
+}

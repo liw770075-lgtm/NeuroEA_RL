@@ -1,0 +1,19 @@
+{
+  "reward_mean": 64.89848763444071,
+  "reward_std": 0.0,
+  "best_mean": 3.361707432843296e-27,
+  "best_std": 0.0,
+  "per_task": [
+    {
+      "task_name": "BBOB_F1",
+      "task_config": [
+        100,
+        1,
+        10,
+        10000
+      ],
+      "reward_mean": 64.89848763444071,
+      "best_mean": 3.361707432843296e-27
+    }
+  ]
+}
